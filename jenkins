@@ -1,31 +1,42 @@
 pipeline {
     agent any
-    tools{
+    tools {
         maven 'maven3'
     }
-    stages{
-        stage('Build Maven'){
-            steps{
-               checkout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[url: 'https://github.com/9182029380/springboot-tdd']])
+    stages {
+        stage('Build Maven') {
+            steps {
+                checkout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[url: 'https://github.com/9182029380/springboot-tdd']])
                 bat 'mvn clean install'
             }
         }
-        stage('Build and Push Docker Image'){
-            steps{
-                script{
+        stage('Build and Push Docker Image') {
+            steps {
+                script {
+                    // Generate a unique tag using the build number or a timestamp
+                    def imageTag = "sharath198/devops-integration:${env.BUILD_NUMBER}"
 
-                    bat 'docker build -t sharath198/devops-integration .'
-                    bat 'docker push sharath198/devops-integration'
+                    // Build and push the Docker image
+                    bat "docker build -t ${imageTag} ."
+                    bat "docker push ${imageTag}"
+
+                    // Save the tag for use in the deployment stage
+                    env.IMAGE_TAG = imageTag
                 }
             }
         }
-         stage('Deploy to k8s'){
-            steps{
-                script{
-                    kubernetesDeploy (configs: 'deploymentservice.yml',kubeconfigId: 'k8sconfigpwd')
+        stage('Deploy to k8s') {
+            steps {
+                script {
+                    // Update the Kubernetes YAML file with the new image tag
+                    bat """
+                    powershell -Command "(Get-Content deploymentservice.yml) -replace 'image: sharath198/devops-integration:.*', 'image: ${env.IMAGE_TAG}' | Set-Content deploymentservice.yml"
+                    """
+
+                    // Deploy using kubectl
+                    kubernetesDeploy(configs: 'deploymentservice.yml', kubeconfigId: 'k8sconfigpwd')
                 }
             }
         }
-
     }
 }
